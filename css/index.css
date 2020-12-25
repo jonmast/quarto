@@ -1,0 +1,119 @@
+html {
+  --piece-size: 40px;
+  --cell-size: calc(var(--piece-size) + 20px);
+  --wood-light: #D7BA89;
+  --wood-dark: #56342A;
+}
+
+.board {
+  perspective: 1000px;
+}
+
+.row {
+  display: flex;
+}
+
+.cell {
+  height: var(--cell-size);
+  width: var(--cell-size);
+  border: 1px solid black;
+  border-radius: 50%;
+  margin: calc(var(--cell-size) / 50);
+  display: flex;
+  justify-content: center;
+}
+
+.unplayed {
+  display: inline-flex;
+  flex-wrap: wrap;
+  margin-top: 30px;
+  perspective: 5000px;
+  max-width: calc(var(--cell-size) * 8)
+}
+
+.piece {
+  height: var(--piece-size);
+  width: var(--piece-size);
+  position: relative;
+  transform: rotateY(-10deg) rotateX(-70deg);
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.unplayed .piece {
+  margin: calc((var(--cell-size) - var(--piece-size)) / 2);
+}
+
+.piece.dark .face {
+  background-color: var(--wood-dark);
+}
+
+.piece.light .face {
+  background: var(--wood-light);
+}
+
+.piece.round {
+  transform: rotateY(-5deg) rotateX(-65deg);
+}
+
+.face {
+  position: absolute;
+  width: inherit;
+  height: inherit;
+  transform-style: preserve-3d;
+  background: inherit;
+  backface-visibility: hidden;
+  border: 1px solid var(--wood-dark);
+}
+
+.dark .face {
+  border: 1px solid black;
+}
+
+.tall .face-front,
+.tall .face-right {
+  height: calc(var(--piece-size) * 2);
+}
+
+.tall.round .face-front {
+  height: calc(var(--piece-size) * 3);
+}
+
+.face-front {
+  transform: translate3d(0, 0, calc(var(--piece-size) / 2));
+  box-shadow: -3px 10px 10px rgba(0, 0, 0, .2);
+}
+
+.face-top {
+  transform: rotateX(90deg) translate3d(0, 0, calc(var(--piece-size) / 2))
+}
+
+.face-right {
+  transform: rotateY(90deg) translate3d(0, 0, calc(var(--piece-size) / 2))
+}
+
+.round .face-top {
+  border-radius: 50%;
+}
+
+.round .face-front {
+  transform: translateY(1px);
+  border-top: 0;
+  height: calc(var(--piece-size) * 2);
+}
+
+.round .face-right {
+  display: none;
+}
+
+.solid .face-top::after {
+  content: '';
+  display: block;
+  height: calc(var(--piece-size) / 2);
+  width: calc(var(--piece-size) / 2);
+  margin: calc(var(--piece-size) / 4);
+  border-radius: 50%;
+  background: #000;
+  opacity: .6;
+  box-shadow: -1px -2px 2px #000;
+}
