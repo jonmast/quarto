@@ -16,36 +16,6 @@ macro_rules! check_for_piece {
     };
 }
 
-pub fn _main() {
-    let mut pieces = Vec::with_capacity(16);
-
-    for height in &[Tall, Short] {
-        for color in &[Dark, Light] {
-            for density in &[Solid, Hollow] {
-                for shape in &[Square, Round] {
-                    pieces.push(Piece {
-                        height: height.clone(),
-                        color: color.clone(),
-                        density: density.clone(),
-                        shape: shape.clone(),
-                    });
-                }
-            }
-        }
-    }
-
-    let mut game = Game {
-        board: empty_board(),
-        pieces: pieces,
-        last_play: Play::Placed(Player::Human),
-        rng: rand::thread_rng(),
-    };
-
-    while !game.is_over() {
-        game.tick();
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Game {
     pub(crate) pieces: Vec<Piece>,
@@ -75,8 +45,8 @@ impl Default for Game {
 
         let board = empty_board();
         Self {
-            board: board,
-            pieces: pieces,
+            board,
+            pieces,
             last_play: Play::Placed(Player::Human),
             rng: rand::thread_rng(),
         }
@@ -129,8 +99,26 @@ impl Game {
             }
             // Machine must place staged piece
             Play::Staged(Player::Human, piece) => {
-                let scores = self.monte_placement_scores(&piece);
-                let (square, score) = scores.iter().max_by_key(|(_, score)| *score).unwrap();
+                let scores = self.minmax_monte_placement_scores(&piece);
+
+                // logging
+                {
+                    let mut sorted = scores.iter().collect::<Vec<_>>();
+                    sorted.sort_by_key(|&(_, score)| score);
+
+                    sorted
+                        .iter()
+                        .map(|((square, next_piece), score)| {
+                            format!(
+                                "Position {} {} Next {} - {}",
+                                square.0, square.1, next_piece, score
+                            )
+                        })
+                        .for_each(|s| seed::log!(s));
+                }
+
+                let ((square, next_piece), score) =
+                    scores.iter().max_by_key(|(_, score)| *score).unwrap();
                 println!(
                     "Playing piece in position {:?} with score: {}",
                     square, score
@@ -142,9 +130,10 @@ impl Game {
                     println!("You lose!");
                     self.last_play = Play::Finished(Resolution::Win(Player::Machine))
                 } else {
-                    self.last_play = Play::Placed(Player::Machine)
+                    let piece = self.pieces.remove(*next_piece);
+                    println!("Staging piece with score: {}", score);
+                    self.last_play = Play::Staged(Player::Machine, piece);
                 }
-                print_board(&self.board);
             }
             // Machine must stage a piece
             Play::Placed(Player::Machine) => {
@@ -360,6 +349,45 @@ impl Game {
             let square = available.choose(&mut game.rng).unwrap();
             *scores.entry(*square).or_default() +=
                 game.placement_score(piece.clone(), Player::Machine);
+        }
+
+        scores
+    }
+
+    fn minmax_monte_placement_scores(&self, piece: &Piece) -> HashMap<(Coord, usize), i32> {
+        let mut scores = HashMap::new();
+        let remaining = self.pieces.len();
+
+        for square in self.empty_squares() {
+            let mut game = self.clone();
+            game.board[square.0][square.1] = Some(piece.clone());
+
+            if game.is_win(&square) {
+                // Always take the win if available
+                scores.insert((square, 0), i32::MAX);
+                break;
+            }
+
+            let mut piece_scores: Vec<i32> = [0].repeat(remaining);
+
+            for (idx, _) in self.pieces.iter().enumerate() {
+                piece_scores[idx] = 0;
+
+                for _ in 0..100 {
+                    let mut game = game.clone();
+                    let piece = game.pieces.remove(idx);
+                    piece_scores[idx] += game.placement_score(piece, Player::Human);
+                }
+            }
+
+            // Is this proper min-max?
+            let (best_piece_idx, score) = piece_scores
+                .iter()
+                .enumerate()
+                .max_by_key(|&(_, item)| item)
+                .unwrap();
+
+            scores.insert((square, best_piece_idx), *score);
         }
 
         scores
