@@ -84,7 +84,6 @@ impl Game {
 
     pub(crate) fn tick(&mut self) {
         if self.pieces.is_empty() {
-            println!("Game ended in draw");
             self.last_play = Play::Finished(Resolution::Draw);
             return;
         }
@@ -117,34 +116,27 @@ impl Game {
                         .for_each(|s| seed::log!(s));
                 }
 
-                let ((square, next_piece), score) =
+                let ((square, next_piece), _score) =
                     scores.iter().max_by_key(|(_, score)| *score).unwrap();
-                println!(
-                    "Playing piece in position {:?} with score: {}",
-                    square, score
-                );
 
                 self.board[square.0][square.1] = Some(piece);
 
                 if self.is_win(square) {
-                    println!("You lose!");
                     self.last_play = Play::Finished(Resolution::Win(Player::Machine))
                 } else {
                     let piece = self.pieces.remove(*next_piece);
-                    println!("Staging piece with score: {}", score);
                     self.last_play = Play::Staged(Player::Machine, piece);
                 }
             }
             // Machine must stage a piece
             Play::Placed(Player::Machine) => {
-                let scores = self.monte_stage_scores();
-                let (idx, score) = scores
-                    .into_iter()
-                    .enumerate()
-                    .max_by_key(|(_idx, score)| *score)
-                    .unwrap();
+                // This step is combined with machine play except for when
+                // machine staging is first move. There is no optimum strategy
+                // here, so just pick a random piece.
+
+
+                let idx = self.rng.gen_range(0, self.pieces.len());
                 let piece = self.pieces.remove(idx);
-                println!("Staging piece with score: {}", score);
                 self.last_play = Play::Staged(Player::Machine, piece);
             }
             // Human must place staged piece
@@ -153,13 +145,10 @@ impl Game {
                 self.board[square.0][square.1] = Some(piece);
 
                 if self.is_win(&square) {
-                    println!("You win!");
                     self.last_play = Play::Finished(Resolution::Win(Player::Human))
                 } else {
                     self.last_play = Play::Placed(Player::Human)
                 }
-
-                print_board(&self.board);
             }
             Play::Transitioning | Play::Finished(_) => unreachable!("Tick invariant not upheld"),
         }
@@ -311,54 +300,26 @@ impl Game {
         matching_pieces(&column)
     }
 
-    // TODO: do placement and staging computation in single pass
-    fn monte_stage_scores(&self) -> Vec<i32> {
-        let mut scores: Vec<i32> = [0].repeat(self.pieces.len());
-
-        let perf = web_sys::window().unwrap().performance().unwrap();
-        let start = perf.now();
-
-        for n in 0..SIMULATIONS {
-            if (perf.now() - start) > MAX_RUNTIME_MS {
-                seed::log!("Bailing staging", n);
-                break;
-            }
-            let mut game = self.clone();
-            let idx = game.rng.gen_range(0, game.pieces.len());
-            let piece = game.pieces.remove(idx);
-            // println!("Randomly choosing piece {}", piece.display());
-            scores[idx] += game.placement_score(piece, Player::Human);
-        }
-
-        scores
-    }
-
-    fn monte_placement_scores(&self, piece: &Piece) -> HashMap<Coord, i32> {
-        let mut scores: HashMap<Coord, i32> = HashMap::new();
-        let available = self.empty_squares();
-
-        let perf = web_sys::window().unwrap().performance().unwrap();
-        let start = perf.now();
-
-        for n in 0..SIMULATIONS {
-            if (perf.now() - start) > MAX_RUNTIME_MS {
-                seed::log!("Bailing placement", n);
-                break;
-            }
-            let mut game = self.clone();
-            let square = available.choose(&mut game.rng).unwrap();
-            *scores.entry(*square).or_default() +=
-                game.placement_score(piece.clone(), Player::Machine);
-        }
-
-        scores
-    }
-
     fn minmax_monte_placement_scores(&self, piece: &Piece) -> HashMap<(Coord, usize), i32> {
         let mut scores = HashMap::new();
         let remaining = self.pieces.len();
 
-        for square in self.empty_squares() {
+        let perf = web_sys::window().unwrap().performance().unwrap();
+
+        let empty_squares = self.empty_squares();
+
+        let empty_square_count = empty_squares.len();
+        let pieces_count = self.pieces.len();
+
+        // We non-randomly enumerate all empty square/piece combos, so there
+        // will be at least that many iterations
+        let base_iterations = empty_square_count as u32 * pieces_count as u32;
+
+        // Split our simulation budget between all the base iterations.
+        let random_iterations = SIMULATIONS / base_iterations;
+        let perf_budget = MAX_RUNTIME_MS / base_iterations as f64;
+
+        for square in empty_squares {
             let mut game = self.clone();
             game.board[square.0][square.1] = Some(piece.clone());
 
@@ -372,8 +333,16 @@ impl Game {
 
             for (idx, _) in self.pieces.iter().enumerate() {
                 piece_scores[idx] = 0;
+                let start = perf.now();
 
-                for _ in 0..100 {
+                for n in 0..random_iterations {
+                    let elapsed = perf.now() - start;
+
+                    if elapsed > perf_budget {
+                        seed::log!(format!("Bailing due to time. Iterations: {}, Time: {}", n, elapsed));
+                        continue;
+                    }
+
                     let mut game = game.clone();
                     let piece = game.pieces.remove(idx);
                     piece_scores[idx] += game.placement_score(piece, Player::Human);
@@ -398,9 +367,6 @@ impl Game {
         for square in self.empty_squares() {
             self.board[square.0][square.1] = piece;
             if self.is_win(&square) {
-                // println!("Found win");
-                // print_board(&self.board);
-
                 return match player {
                     Player::Machine => 1,
                     Player::Human => -1,
@@ -412,8 +378,6 @@ impl Game {
         let available = self.empty_squares();
         let square = available.choose(&mut self.rng).unwrap();
         self.board[square.0][square.1] = piece;
-        // print_board(&self.board);
-        // println!("{:?} played in square {:?}", player, square);
 
         self.stage_score(player)
     }
@@ -430,7 +394,7 @@ impl Game {
 }
 
 const SIMULATIONS: u32 = 10000;
-const MAX_RUNTIME_MS: f64 = 10_000_f64;
+const MAX_RUNTIME_MS: f64 = 1_000_f64;
 
 #[derive(Debug, Clone)]
 pub(crate) enum Play {
@@ -446,28 +410,6 @@ pub(crate) enum Play {
 pub(crate) enum Resolution {
     Win(Player),
     Draw,
-}
-
-fn print_board(board: &Board) {
-    let lines: Vec<String> = board
-        .iter()
-        .map(|row| {
-            let cells: Vec<String> = row
-                .iter()
-                .map(|piece| {
-                    if let Some(piece) = piece {
-                        piece.display()
-                    } else {
-                        "  ".to_string()
-                    }
-                })
-                .collect();
-            format!("│ {} │", cells.join(" │ "))
-        })
-        .collect();
-    println!("┌――――┬――――┬――――┬――――┐");
-    println!("{}", lines.join("\n├――――┼――――┼――――┼――――┤\n"));
-    println!("└――――┴――――┴――――┴――――┘");
 }
 
 // const MAX_DEPTH: usize = 8;

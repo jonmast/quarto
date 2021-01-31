@@ -78,7 +78,6 @@ fn advance_state(model: &mut Model) -> bool {
 fn view(model: &Model) -> Node<Msg> {
     seed::log!("re-rendering");
     div![
-        "This is a game: ",
         div![
             C!["board"],
             model.board.iter().enumerate().map(|(row_idx, row)| {
@@ -130,7 +129,7 @@ fn display_state(play: &game::Play) -> Node<Msg> {
         Placed(Player::Human) => div!["Please select a piece for the computer to play"],
         Staged(Player::Machine, piece) => div![
             "Computer selected:",
-            display_piece(piece),
+            div![C!["piece-staging"], display_piece(piece)],
             "Please select square to play piece",
         ],
         _ => div!["Thinking..."],

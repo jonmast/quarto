@@ -6,7 +6,10 @@ html {
 }
 
 .board {
-  perspective: 1000px;
+  display: inline-block;
+  perspective: 5000px;
+  background: var(--wood-dark);
+  padding: calc(var(--cell-size) / 4);
 }
 
 .row {
@@ -21,6 +24,13 @@ html {
   margin: calc(var(--cell-size) / 50);
   display: flex;
   justify-content: center;
+  background: var(--wood-light);
+  box-shadow: 0 0 5px inset #000;
+}
+
+.piece-staging { 
+  height: var(--piece-size);
+  padding: 20px;
 }
 
 .unplayed {
@@ -35,7 +45,7 @@ html {
   height: var(--piece-size);
   width: var(--piece-size);
   position: relative;
-  transform: rotateY(-10deg) rotateX(-70deg);
+  transform: rotateY(-10deg) rotateX(-70deg) translateX(calc(var(--piece-size) / 4 * -1)) translateY(calc(var(--piece-size) / 2 * -1));
   transform-style: preserve-3d;
   backface-visibility: hidden;
 }
@@ -53,7 +63,7 @@ html {
 }
 
 .piece.round {
-  transform: rotateY(-5deg) rotateX(-65deg);
+  transform: rotateY(-5deg) rotateX(-65deg) translateX(calc(var(--piece-size) / 4 * -1)) translateY(calc(var(--piece-size) / 2 * -1));
 }
 
 .face {
